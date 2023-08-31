@@ -8,10 +8,10 @@
 //! ```rust
 //! use nhi::is_nhi;
 //!
-//! println!("{}", is_nhi("ZAC5361"));  // true
-//! println!("{}", is_nhi("ZBN77VL"));  // true
-//! println!("{}", is_nhi("ZZZ0044"));  // false
-//! println!("{}", is_nhi("ZZZ00AA"));  // false
+//! assert_eq!(is_nhi("ZAC5361"),  true);
+//! assert_eq!(is_nhi("ZBN77VL"),  true);
+//! assert_eq!(is_nhi("ZZZ0044"),  false);
+//! assert_eq!(is_nhi("ZZZ00AA"),  false);
 //!
 //! ```
 //!
@@ -32,8 +32,8 @@
 //!
 //! let value = "zvb97xq";
 //!
-//! println!("{}", is_nhi(value));  // true
-//! println!("{}", !value.to_uppercase().starts_with('Z') && is_nhi(value));  // false
+//! assert_eq!(is_nhi(value),  true);
+//! assert_eq!(!value.to_uppercase().starts_with('Z') && is_nhi(value),  false);
 //!
 //! ```
 //!
@@ -42,8 +42,8 @@
 //!
 //! ## See Also
 //!
-//! - https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/
-//! - https://www.tewhatuora.govt.nz/our-health-system/digital-health/health-identity/national-health-index/information-for-health-it-vendors-and-developers
+//! - <https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/>
+//! - <https://www.tewhatuora.govt.nz/our-health-system/digital-health/health-identity/national-health-index/information-for-health-it-vendors-and-developers>
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -59,23 +59,23 @@ lazy_static! {
 /// defined by HISO 10046:2023 and the NHI validation routine
 ///
 /// ## See Also
-/// https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/
+/// <https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/>
 ///
 /// # Arguments
 ///
 /// * `nhi`: A potential NHI string
 ///
-/// returns: True if the given string satisfies the New Zealand NHI Validation Routine and False otherwise
+/// returns: `true` if the given string satisfies the New Zealand NHI Validation Routine and `false` otherwise
 ///
 /// # Examples
 ///
 /// ```
 /// use nhi::is_nhi;
 ///
-/// is_nhi("ZAC5361");  // true
-/// is_nhi("ZBN77VL");  // true
-/// is_nhi("ZZZ0044");  // false
-/// is_nhi("ZZZ00AA");  // false
+/// assert_eq!(is_nhi("ZAC5361"), true);
+/// assert_eq!(is_nhi("ZBN77VL"), true);
+/// assert_eq!(is_nhi("ZZZ0044"), false);
+/// assert_eq!(is_nhi("ZZZ00AA"), false);
 /// ```
 pub fn is_nhi(nhi: &str) -> bool {
     let nhi = &nhi.to_uppercase();
@@ -169,7 +169,7 @@ mod tests {
         assert!(!is_nhi("ZVU27KA"));
 
         // Needs a check character of V
-        for c in "ABCDEFGHIJKLMNOPQRSTUWXYZ".chars() {
+        for c in "ABCDEFGHJKLMNPQRSTUWXYZ".chars() {
             assert!(!is_nhi(&format!("ZHW58C{c}")))
         }
     }
