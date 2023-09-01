@@ -1,9 +1,10 @@
-//! A function to check strings against the New Zealand Ministry of Health NHI
-//! Validation Routine.
+//! Checks trings against the New Zealand Ministry of Health NHI Validation Routine.
 //! Supports the old and new NHI number formats specified in
 //! [HISO 10046:2023](https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/).
 //!
 //! ## Usage
+//!
+//! A simple [is_nhi] function can check whether a string is valid:
 //!
 //! ```rust
 //! use nhi::is_nhi;
@@ -15,6 +16,15 @@
 //!
 //! ```
 //!
+//! Alternatively, strings can be parsed to [NHI] values:
+//!
+//! ```rust
+//! use nhi::NHI;
+//!
+//! let nhi: NHI = "zbn77vl".parse().unwrap();
+//! assert_eq!(nhi.as_str(), "ZBN77VL");
+//! ```
+//!
 //! Checks are case-insensitive.
 //!
 //! ***Note:*** This does not check that the NHI number has been _assigned_ to
@@ -24,7 +34,7 @@
 //! ### Excluding Testcases
 //!
 //! NHI numbers that begin with `Z` are reserved for testing.
-//! If you wish to exclude these values, you will need to manually check for a `Z`
+//! If you wish to exclude these values using [is_nhi], you will need to manually check for a `Z`
 //! prefix:
 //!
 //! ```rust
@@ -37,6 +47,18 @@
 //!
 //! ```
 //!
+//! Alternatively, parsed [NHI] values provide [NHI::is_test] and [NHI::is_not_test] methods:
+//!
+//! ```rust
+//! use nhi::NHI;
+//!
+//! let reserved: NHI = "ZAA0105".parse().unwrap();
+//! let unreserved: NHI = "JBX3656".parse().unwrap();
+//!
+//! assert!(reserved.is_test());
+//! assert!(unreserved.is_not_test());
+//! ```
+//!
 //! ***Note:*** This check does not mean that the NHI number has been _assigned_ to
 //! a person, it just means that the NHI value is not reserved for testing.
 //!
@@ -45,20 +67,107 @@
 //! - <https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/>
 //! - <https://www.tewhatuora.govt.nz/our-health-system/digital-health/health-identity/national-health-index/information-for-health-it-vendors-and-developers>
 
+use std::fmt;
+use std::str::FromStr;
+
 use lazy_static::lazy_static;
 use regex::Regex;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 lazy_static! {
-    static ref OLD_NHI_FORMAT_REGEX: Regex =
-        Regex::new(r"^[A-HJ-NP-Z]{3}\d{4}$").unwrap();
-    static ref NEW_NHI_FORMAT_REGEX: Regex =
-        Regex::new(r"^[A-HJ-NP-Z]{3}\d{2}[A-HJ-NP-Z]{2}$").unwrap();
+    static ref OLD_NHI_FORMAT: Regex = Regex::new(r"^[A-HJ-NP-Z]{3}\d{4}$").unwrap();
+    static ref NEW_NHI_FORMAT: Regex = Regex::new(r"^[A-HJ-NP-Z]{3}\d{2}[A-HJ-NP-Z]{2}$").unwrap();
+}
+
+/// Represents a valid NHI number that satisfies the
+/// [HISO 10046:2023](https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/)
+/// standard.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct NHI(String);
+
+impl NHI {
+    /// Extracts a string slice containing this NHI number's underlying string value
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Converts this NHI to its underlying String value
+    pub fn into_string(self) -> String {
+        self.0
+    }
+
+    /// Returns `true` if this NHI is reserved for testing and `false` otherwise
+    pub fn is_test(&self) -> bool {
+        self.0.starts_with('Z')
+    }
+
+    /// Returns `true` if this NHI is NOT reserved for testing and `false` otherwise
+    pub fn is_not_test(&self) -> bool {
+        !self.0.starts_with('Z')
+    }
+}
+
+impl fmt::Display for NHI {
+    /// Formats this NHI as its underlying NHI value
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Empty struct to indicate an invalid NHI string
+#[derive(Debug)]
+pub struct NHIParseError;
+
+impl FromStr for NHI {
+    type Err = NHIParseError;
+
+    /// Parses a string to an [NHI] iff the given string satisfies the
+    /// [HISO 10046:2023](https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/)
+    /// standard, otherwise returns an error.
+    ///
+    /// # Arguments
+    ///
+    /// * `s`: a potential NHI string
+    ///
+    /// returns: Result<NHI, ParseNHIError>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use nhi::NHI;
+    /// use std::str::FromStr;
+    ///
+    /// let nhi = NHI::from_str("zbn77vl").unwrap();
+    /// assert_eq!(nhi.as_str(), "ZBN77VL")
+    /// ```
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let nhi = s.to_uppercase();
+        if OLD_NHI_FORMAT.is_match(&nhi) {
+            let checksum = checksum(&nhi) % 11;
+            let check_digit = (11 - checksum) % 10;
+            if checksum != 0 && check_digit == char_code(nhi.chars().last().unwrap()) {
+                return Ok(NHI(nhi));
+            }
+        } else if NEW_NHI_FORMAT.is_match(&nhi) {
+            let checksum = checksum(&nhi) % 23;
+            let check_digit = 23 - checksum;
+            if check_digit == char_code(nhi.chars().last().unwrap()) {
+                return Ok(NHI(nhi));
+            }
+        }
+        Err(NHIParseError)
+    }
 }
 
 /// Checks a string against the New Zealand Ministry of Health NHI specification
-/// defined by HISO 10046:2023 and the NHI validation routine
+/// defined by the
+/// [HISO 10046:2023](https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/)
+/// standard
 ///
-/// ## See Also
+/// # See Also
 /// <https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/>
 ///
 /// # Arguments
@@ -78,18 +187,7 @@ lazy_static! {
 /// assert_eq!(is_nhi("ZZZ00AA"), false);
 /// ```
 pub fn is_nhi(nhi: &str) -> bool {
-    let nhi = &nhi.to_uppercase();
-    if OLD_NHI_FORMAT_REGEX.is_match(nhi) {
-        let checksum = checksum(nhi) % 11;
-        let check_digit = (11 - checksum) % 10;
-        checksum != 0 && check_digit == char_code(nhi.chars().last().unwrap())
-    } else if NEW_NHI_FORMAT_REGEX.is_match(nhi) {
-        let checksum = checksum(nhi) % 23;
-        let check_digit = 23 - checksum;
-        check_digit == char_code(nhi.chars().last().unwrap())
-    } else {
-        false
-    }
+    NHI::from_str(nhi).is_ok()
 }
 
 fn checksum(nhi: &str) -> u32 {
@@ -112,62 +210,60 @@ fn char_code(char: char) -> u32 {
 mod tests {
     use super::*;
 
+    const VALID_OLD: [&str; 15] = [
+        "JBX3656", "ZZZ0016", "ZZZ0024", "ZAA0067", "ZAA0075", "ZAA0083", "ZAA0091",
+        "ZAA0105", "ZAA0113", "ZAA0121", "ZAA0130", "ZAA0148", "ZAA0156", "ZAC5361",
+        "ABC1235",
+    ];
+    const VALID_NEW: [&str; 11] = [
+        "ZBN77VL", "ZZZ00AC", "ZDR69YX", "ZSC21TN", "ZZB30NH", "ZYZ81ZV", "ZVB97XQ",
+        "ZRA29VA", "ZYX61YS", "ABC12AY", "XYZ12AN",
+    ];
+    const INVALID_OLD: [&str; 3] = ["ZZZ0044", "ZZZ0017", "DAB8233"];
+    const INVALID_NEW: [&str; 4] = ["ZZZ00AA", "ZZZ00AY", "ZVU27KY", "ZVU27KA"];
+    const RANDOM_STRINGS: [&str; 7] = [
+        "not an NHI", "!@#$%&*", "AAANNNC", "AAANNAC", "ZVU27K", "JBX365", ""
+    ];
+
     #[test]
-    fn valid_old_format_nhi_number() {
-        assert!(is_nhi("JBX3656"));
-        assert!(is_nhi("ZZZ0016"));
-        assert!(is_nhi("ZZZ0024"));
-        assert!(is_nhi("ZAA0067"));
-        assert!(is_nhi("ZAA0075"));
-        assert!(is_nhi("ZAA0083"));
-        assert!(is_nhi("ZAA0091"));
-        assert!(is_nhi("ZAA0105"));
-        assert!(is_nhi("ZAA0113"));
-        assert!(is_nhi("ZAA0121"));
-        assert!(is_nhi("ZAA0130"));
-        assert!(is_nhi("ZAA0148"));
-        assert!(is_nhi("ZAA0156"));
-        assert!(is_nhi("ZAC5361"));
+    fn is_nhi_recognises_valid_old_format_nhi_numbers() {
+        for nhi in VALID_OLD {
+            assert!(is_nhi(nhi));
+        }
     }
 
     #[test]
-    fn valid_new_format_nhi_number() {
-        assert!(is_nhi("ZBN77VL"));
-        assert!(is_nhi("ZZZ00AC"));
-        assert!(is_nhi("ZDR69YX"));
-        assert!(is_nhi("ZSC21TN"));
-        assert!(is_nhi("ZZB30NH"));
-        assert!(is_nhi("ZYZ81ZV"));
-        assert!(is_nhi("ZVB97XQ"));
-        assert!(is_nhi("ZRA29VA"));
-        assert!(is_nhi("ZYX61YS"));
+    fn is_nhi_rejects_invalid_old_format_nhi_numbers() {
+        for nhi in INVALID_OLD {
+            assert!(!is_nhi(nhi));
+        }
+        // Needs a check digit of 6
+        for i in 0..10 {
+            if i != 6 {
+                assert!(!is_nhi(&format!("JBX365{i}")));
+            }
+        }
     }
 
     #[test]
-    fn invalid_old_format_nhi_numbers() {
-        assert!(!is_nhi("ZZZ0044"));
-        assert!(!is_nhi("ZZZ0017"));
-        assert!(!is_nhi("DAB8233"));
-
-        // Needs a checkdigit of 6
-        assert!(!is_nhi("JBX3650"));
-        assert!(!is_nhi("JBX3651"));
-        assert!(!is_nhi("JBX3652"));
-        assert!(!is_nhi("JBX3653"));
-        assert!(!is_nhi("JBX3654"));
-        assert!(!is_nhi("JBX3655"));
-        assert!(!is_nhi("JBX3657"));
-        assert!(!is_nhi("JBX3658"));
-        assert!(!is_nhi("JBX3659"));
+    fn no_digit_can_be_added_to_an_old_format_nhi_with_a_checksum_of_0_to_make_it_valid() {
+        for i in 0..10 {
+            assert!(!is_nhi(&format!("ZZZ004{i}")));
+        }
     }
 
     #[test]
-    fn invalid_new_format_nhi_numbers() {
-        assert!(!is_nhi("ZZZ00AA"));
-        assert!(!is_nhi("ZZZ00AY"));
-        assert!(!is_nhi("ZVU27KY"));
-        assert!(!is_nhi("ZVU27KA"));
+    fn is_nhi_recognises_valid_new_format_nhi_numbers() {
+        for nhi in VALID_NEW {
+            assert!(is_nhi(nhi));
+        }
+    }
 
+    #[test]
+    fn is_nhi_rejects_invalid_new_format_nhi_numbers() {
+        for nhi in INVALID_NEW {
+            assert!(!is_nhi(nhi));
+        }
         // Needs a check character of V
         for c in "ABCDEFGHJKLMNPQRSTUWXYZ".chars() {
             assert!(!is_nhi(&format!("ZHW58C{c}")))
@@ -175,87 +271,75 @@ mod tests {
     }
 
     #[test]
-    fn random_strings_are_invalid() {
-        assert!(!is_nhi("not an NHI"));
-        assert!(!is_nhi("!@#$%&*"));
-        assert!(!is_nhi("AAANNNC"));
-        assert!(!is_nhi("AAANNAC"));
-        assert!(!is_nhi("ZVU27K"));
-        assert!(!is_nhi("JBX365"));
-        assert!(!is_nhi(""));
+    fn is_nhi_rejects_random_strings() {
+        for nhi in RANDOM_STRINGS {
+            assert!(!is_nhi(nhi));
+        }
     }
 
     #[test]
     fn is_nhi_is_case_insensitive() {
-        // Valid cases
-        assert!(is_nhi("jBx3656"));
-        assert!(is_nhi("zZz0016"));
-        assert!(is_nhi("zZz0024"));
-        assert!(is_nhi("zAa0067"));
-        assert!(is_nhi("zAa0075"));
-        assert!(is_nhi("zAa0083"));
-        assert!(is_nhi("zAa0091"));
-        assert!(is_nhi("zAa0105"));
-        assert!(is_nhi("zAa0113"));
-        assert!(is_nhi("zAa0121"));
-        assert!(is_nhi("zAa0130"));
-        assert!(is_nhi("zAa0148"));
-        assert!(is_nhi("zAa0156"));
-        assert!(is_nhi("zAc5361"));
-        assert!(is_nhi("zZz00aC"));
-        assert!(is_nhi("zDr69yX"));
-        assert!(is_nhi("zSc21tN"));
-        assert!(is_nhi("zZb30nH"));
-        assert!(is_nhi("zYz81Zv"));
-        assert!(is_nhi("zVb97Xq"));
-        assert!(is_nhi("zRa29Va"));
-        assert!(is_nhi("zYx61Ys"));
+        for nhi in VALID_OLD.iter().chain(VALID_NEW.iter()) {
+            assert!(is_nhi(&nhi.to_lowercase()))
+        }
+        for nhi in INVALID_OLD.iter().chain(INVALID_NEW.iter()).chain(RANDOM_STRINGS.iter()) {
+            assert!(!is_nhi(&nhi.to_lowercase()))
+        }
+    }
 
-        // Invalid cases
-        assert!(!is_nhi("zzZ0044"));
-        assert!(!is_nhi("zzZ0017"));
-        assert!(!is_nhi("daB8233"));
-        assert!(!is_nhi("jbX3650"));
-        assert!(!is_nhi("jbX3651"));
-        assert!(!is_nhi("jbX3652"));
-        assert!(!is_nhi("jbX3653"));
-        assert!(!is_nhi("jbX3654"));
-        assert!(!is_nhi("jbX3655"));
-        assert!(!is_nhi("jbX3657"));
-        assert!(!is_nhi("jbX3658"));
-        assert!(!is_nhi("jbX3659"));
-        assert!(!is_nhi("zzZ00aa"));
-        assert!(!is_nhi("zzZ00ay"));
-        assert!(!is_nhi("zvU27ky"));
-        assert!(!is_nhi("zvU27ka"));
-        assert!(!is_nhi("zhW58cz"));
+    #[test]
+    fn nhi_numbers_can_be_parsed_from_strings_to_results() {
+        for nhi_str in VALID_OLD.iter().chain(VALID_NEW.iter()) {
+            assert!(NHI::from_str(nhi_str).is_ok());
+        }
+        for nhi_str in INVALID_OLD.iter().chain(INVALID_NEW.iter()).chain(RANDOM_STRINGS.iter()) {
+            assert!(NHI::from_str(nhi_str).is_err());
+        }
+    }
+
+    #[test]
+    fn nhi_numbers_can_be_converted_to_strings() {
+        for nhi_str in VALID_OLD.iter().chain(VALID_NEW.iter()) {
+            let nhi = NHI::from_str(&nhi_str.to_lowercase()).unwrap();
+            assert_eq!(nhi.as_str(), nhi_str.to_uppercase());
+            assert_eq!(nhi.into_string(), nhi_str.to_uppercase());
+        }
+    }
+
+    #[test]
+    fn nhi_numbers_identify_values_reserved_for_testing() {
+        let reserved = vec!["ZAA0105", "ZAA0113", "ZBN77VL", "ZZZ00AC"];
+        let unreserved = vec!["JBX3656", "ABC1235", "ABC12AY", "XYZ12AN"];
+        for nhi in reserved {
+            let nhi: NHI = nhi.parse().unwrap();
+            assert!(nhi.is_test());
+            assert!(!nhi.is_not_test());
+        }
+        for nhi in unreserved {
+            let nhi: NHI = nhi.parse().unwrap();
+            assert!(!nhi.is_test());
+            assert!(nhi.is_not_test());
+        }
+    }
+
+    #[test]
+    fn nhi_numbers_can_be_formatted() {
+        for nhi_str in VALID_OLD.iter().chain(VALID_NEW.iter()) {
+            let nhi = NHI::from_str(&nhi_str.to_lowercase()).unwrap();
+            assert_eq!(format!("{nhi}"), nhi_str.to_uppercase());
+        }
     }
 
     #[test]
     fn char_codes() {
-        assert_eq!(char_code('A'), 1);
-        assert_eq!(char_code('B'), 2);
-        assert_eq!(char_code('C'), 3);
-        assert_eq!(char_code('D'), 4);
-        assert_eq!(char_code('E'), 5);
-        assert_eq!(char_code('F'), 6);
-        assert_eq!(char_code('G'), 7);
-        assert_eq!(char_code('H'), 8);
-        assert_eq!(char_code('J'), 9);
-        assert_eq!(char_code('K'), 10);
-        assert_eq!(char_code('L'), 11);
-        assert_eq!(char_code('M'), 12);
-        assert_eq!(char_code('N'), 13);
-        assert_eq!(char_code('P'), 14);
-        assert_eq!(char_code('Q'), 15);
-        assert_eq!(char_code('R'), 16);
-        assert_eq!(char_code('S'), 17);
-        assert_eq!(char_code('T'), 18);
-        assert_eq!(char_code('U'), 19);
-        assert_eq!(char_code('V'), 20);
-        assert_eq!(char_code('W'), 21);
-        assert_eq!(char_code('X'), 22);
-        assert_eq!(char_code('Y'), 23);
-        assert_eq!(char_code('Z'), 24);
+        for (i, c) in ('A'..'I').enumerate() {
+            assert_eq!(char_code(c), i as u32 + 1);
+        }
+        for (i, c) in ('J'..'O').enumerate() {
+            assert_eq!(char_code(c), i as u32 + 9);
+        }
+        for (i, c) in ('P'..='Z').enumerate() {
+            assert_eq!(char_code(c), i as u32 + 14);
+        }
     }
 }
