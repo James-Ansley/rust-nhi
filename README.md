@@ -4,6 +4,12 @@ Checks strings against the New Zealand Ministry of Health NHI Validation Routine
 Supports the old and new NHI number formats specified in
 [HISO 10046:2023](https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/).
 
+## Install
+
+```
+cargo add nhi
+```
+
 ## Docs
 
 - <https://docs.rs/nhi/latest/nhi/>
