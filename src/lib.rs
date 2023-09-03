@@ -119,10 +119,10 @@ impl fmt::Display for NHI {
 
 /// Empty struct to indicate an invalid NHI string
 #[derive(Debug)]
-pub struct NHIParseError;
+pub struct ParseNhiError;
 
 impl FromStr for NHI {
-    type Err = NHIParseError;
+    type Err = ParseNhiError;
 
     /// Parses a string to an [NHI] iff the given string satisfies the
     /// [HISO 10046:2023](https://www.tewhatuora.govt.nz/publications/hiso-100462023-consumer-health-identity-standard/)
@@ -158,7 +158,7 @@ impl FromStr for NHI {
                 return Ok(NHI(nhi));
             }
         }
-        Err(NHIParseError)
+        Err(ParseNhiError)
     }
 }
 
@@ -222,7 +222,7 @@ mod tests {
     const INVALID_OLD: [&str; 3] = ["ZZZ0044", "ZZZ0017", "DAB8233"];
     const INVALID_NEW: [&str; 4] = ["ZZZ00AA", "ZZZ00AY", "ZVU27KY", "ZVU27KA"];
     const RANDOM_STRINGS: [&str; 7] = [
-        "not an NHI", "!@#$%&*", "AAANNNC", "AAANNAC", "ZVU27K", "JBX365", ""
+        "not an NHI", "!@#$%&*", "AAANNNC", "AAANNAC", "ZVU27K", "JBX365", "",
     ];
 
     #[test]
@@ -266,7 +266,7 @@ mod tests {
         }
         // Needs a check character of V
         for c in "ABCDEFGHJKLMNPQRSTUWXYZ".chars() {
-            assert!(!is_nhi(&format!("ZHW58C{c}")))
+            assert!(!is_nhi(&format!("ZHW58C{c}")));
         }
     }
 
@@ -280,10 +280,10 @@ mod tests {
     #[test]
     fn is_nhi_is_case_insensitive() {
         for nhi in VALID_OLD.iter().chain(VALID_NEW.iter()) {
-            assert!(is_nhi(&nhi.to_lowercase()))
+            assert!(is_nhi(&nhi.to_lowercase()));
         }
         for nhi in INVALID_OLD.iter().chain(INVALID_NEW.iter()).chain(RANDOM_STRINGS.iter()) {
-            assert!(!is_nhi(&nhi.to_lowercase()))
+            assert!(!is_nhi(&nhi.to_lowercase()));
         }
     }
 
